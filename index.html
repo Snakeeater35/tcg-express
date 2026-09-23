@@ -350,9 +350,9 @@
 
   // Conexión a Supabase — separada del resto para que un fallo de red no
   // deje el formulario sin rarezas ni funcionando.
-  let supabase = null;
+  let sb = null;
   try {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   } catch (e) {
     console.error('No se pudo conectar a Supabase:', e);
   }
@@ -366,7 +366,7 @@
     e.preventDefault();
     errorMsg.textContent = '';
 
-    if (!supabase) {
+    if (!sb) {
       errorMsg.textContent = 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.';
       return;
     }
@@ -397,7 +397,7 @@
     btnEnviar.disabled = true;
     btnEnviar.textContent = 'Enviando...';
 
-    const { error } = await supabase.from('pedidos').insert([data]);
+    const { error } = await sb.from('pedidos').insert([data]);
 
     if (error) {
       errorMsg.textContent = 'Hubo un error al enviar tu pedido. Intenta de nuevo.';
