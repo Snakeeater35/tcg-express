@@ -81,6 +81,10 @@
   .sugerencia-item:last-child{ border-bottom:none; }
   .sugerencia-item:hover, .sugerencia-item.activa{ background:#f3ede0; }
   .sugerencia-cargando{ padding:10px 12px; font-size:13px; color:#7a7154; }
+  .aviso-rareza{
+    margin-top:6px; font-size:12px; color:#8a5a1a; background:#faedd4;
+    border-left:3px solid #c9a227; padding:6px 8px; border-radius:5px; line-height:1.4;
+  }
 </style>
 </head>
 <body>
@@ -154,9 +158,10 @@
       </div>
 
       <div class="row">
-        <div class="field-group">
+        <div class="field-group" style="position:relative;">
           <label for="codigo">Código</label>
-          <input id="codigo" type="text" placeholder="Ej: RA02-EN023">
+          <input id="codigo" type="text" placeholder="Ej: RA02-EN023" autocomplete="off">
+          <div id="sugerenciasCodigo" class="sugerencias"></div>
         </div>
         <div class="field-group">
           <label for="idioma">Idioma</label>
@@ -179,10 +184,32 @@
         <div class="field-group">
           <label for="rareza">Rareza</label>
           <select id="rareza"></select>
+          <div id="avisoRareza" class="aviso-rareza" style="display:none;">
+            No pudimos confirmar la rareza exacta de esta edición — la verificamos nosotros antes de cotizarte.
+          </div>
         </div>
         <div class="field-group">
           <label for="cantidad">Cantidad</label>
           <input id="cantidad" type="number" min="1" step="1" value="1">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field-group" id="grupoAcabado">
+          <label for="acabado">Acabado</label>
+          <select id="acabado">
+            <option value="Normal">Normal</option>
+            <option value="Foil/Holo">Foil / Holo</option>
+            <option value="Otro acabado">Otro acabado</option>
+          </select>
+        </div>
+        <div class="field-group" id="grupoEdicion">
+          <label for="edicion">Edición</label>
+          <select id="edicion">
+            <option value="No aplica">No aplica</option>
+            <option value="1ra Edición">1ra Edición</option>
+            <option value="Unlimited">Unlimited</option>
+          </select>
         </div>
       </div>
 
@@ -261,22 +288,54 @@
 
   const tcgSel = document.getElementById('tcg');
   const rarezaSel = document.getElementById('rareza');
+  const grupoAcabado = document.getElementById('grupoAcabado');
+  const grupoEdicion = document.getElementById('grupoEdicion');
+  const avisoRareza = document.getElementById('avisoRareza');
+
+  function pareceRarezaValida(r){
+    if(!r) return false;
+    const rl = r.toLowerCase().trim();
+    return rl.includes('rare') || rl === 'common' || rl === 'otra';
+  }
+
+  function revisarRarezaSospechosa(){
+    const opciones = Array.from(rarezaSel.options).map(o => o.value);
+    const haySospechosa = opciones.some(v => !pareceRarezaValida(v));
+    avisoRareza.style.display = haySospechosa ? 'block' : 'none';
+  }
+
+  function actualizarCamposCondicionales(){
+    // El acabado Foil/Holo no aplica a Yu-Gi-Oh! (ya va implícito en la rareza)
+    grupoAcabado.style.display = (tcgSel.value === 'Yu-Gi-Oh!') ? 'none' : '';
+    // 1ra Edición / Unlimited solo es relevante en Yu-Gi-Oh y Pokémon
+    grupoEdicion.style.display = (tcgSel.value === 'Yu-Gi-Oh!' || tcgSel.value === 'Pokémon') ? '' : 'none';
+  }
 
   function poblarRarezas(){
     rarezaSel.innerHTML = rarezasDe(tcgSel.value).map(r => `<option value="${r}">${r}</option>`).join('');
+    revisarRarezaSospechosa();
   }
   tcgSel.addEventListener('change', poblarRarezas);
+  tcgSel.addEventListener('change', actualizarCamposCondicionales);
   poblarRarezas();
+  actualizarCamposCondicionales();
 
   // --- Autocompletado de nombre de carta (Yu-Gi-Oh, vía YGOPRODeck) ---
   const cartaInput = document.getElementById('carta');
   const sugerenciasBox = document.getElementById('sugerencias');
+  const codigoInput = document.getElementById('codigo');
+  const sugerenciasCodigoBox = document.getElementById('sugerenciasCodigo');
   let debounceTimer = null;
   let cartaSeleccionada = null; // guarda los card_sets de la carta elegida
+  let codigosPorCarta = null;   // { "RA02-EN023": ["Secret Rare", "Ultra Rare"], ... }
 
   function cerrarSugerencias(){
     sugerenciasBox.classList.remove('open');
     sugerenciasBox.innerHTML = '';
+  }
+  function cerrarSugerenciasCodigo(){
+    sugerenciasCodigoBox.classList.remove('open');
+    sugerenciasCodigoBox.innerHTML = '';
   }
 
   function rarezasDeCartaYGO(cardSets){
@@ -291,6 +350,32 @@
     });
     lista.push('Otra');
     return lista.length > 1 ? lista : null;
+  }
+
+  function agruparCodigosPorRareza(cardSets){
+    if(!cardSets || cardSets.length === 0) return null;
+    const mapa = {};
+    cardSets.forEach(cs => {
+      if(!cs.set_code) return;
+      if(!mapa[cs.set_code]) mapa[cs.set_code] = [];
+      if(cs.set_rarity && !mapa[cs.set_code].includes(cs.set_rarity)){
+        mapa[cs.set_code].push(cs.set_rarity);
+      }
+    });
+    return Object.keys(mapa).length > 0 ? mapa : null;
+  }
+
+  function aplicarRarezaSegunCodigo(codigo){
+    if(!codigosPorCarta || !codigosPorCarta[codigo]) return;
+    const rarezas = codigosPorCarta[codigo];
+    if(rarezas.length === 1){
+      // Solo una rareza posible para este código: se autocompleta sola.
+      rarezaSel.innerHTML = `<option value="${rarezas[0]}">${rarezas[0]}</option>`;
+    } else {
+      // Varias rarezas para el mismo código: se deja elegir solo entre esas.
+      rarezaSel.innerHTML = rarezas.map(r => `<option value="${r}">${r}</option>`).join('');
+    }
+    revisarRarezaSospechosa();
   }
 
   async function buscarYGO(query){
@@ -313,9 +398,12 @@
         item.addEventListener('click', () => {
           cartaInput.value = c.name;
           cartaSeleccionada = c.card_sets || null;
+          codigosPorCarta = agruparCodigosPorRareza(cartaSeleccionada);
+          codigoInput.value = '';
           const rarezasReales = rarezasDeCartaYGO(cartaSeleccionada);
           if(rarezasReales){
             rarezaSel.innerHTML = rarezasReales.map(r => `<option value="${r}">${r}</option>`).join('');
+            revisarRarezaSospechosa();
           } else {
             poblarRarezas(); // vuelve a la lista genérica si esta carta no trae ediciones
           }
@@ -330,6 +418,7 @@
 
   cartaInput.addEventListener('input', () => {
     cartaSeleccionada = null;
+    codigosPorCarta = null;
     const query = cartaInput.value.trim();
     clearTimeout(debounceTimer);
     if(tcgSel.value !== 'Yu-Gi-Oh!' || query.length < 3){
@@ -341,11 +430,50 @@
 
   document.addEventListener('click', (e) => {
     if(!sugerenciasBox.contains(e.target) && e.target !== cartaInput) cerrarSugerencias();
+    if(!sugerenciasCodigoBox.contains(e.target) && e.target !== codigoInput) cerrarSugerenciasCodigo();
   });
 
   tcgSel.addEventListener('change', () => {
     cartaSeleccionada = null;
+    codigosPorCarta = null;
     cerrarSugerencias();
+    cerrarSugerenciasCodigo();
+  });
+
+  // --- Autocompletado de código, filtrado por la carta ya elegida ---
+  codigoInput.addEventListener('input', () => {
+    const texto = codigoInput.value.trim().toUpperCase();
+    if(!codigosPorCarta){
+      cerrarSugerenciasCodigo();
+      return;
+    }
+    const codigosFiltrados = Object.keys(codigosPorCarta)
+      .filter(cod => cod.toUpperCase().includes(texto))
+      .slice(0, 8);
+    if(codigosFiltrados.length === 0){
+      cerrarSugerenciasCodigo();
+      return;
+    }
+    sugerenciasCodigoBox.innerHTML = '';
+    codigosFiltrados.forEach(cod => {
+      const rarezas = codigosPorCarta[cod];
+      const item = document.createElement('div');
+      item.className = 'sugerencia-item';
+      item.textContent = rarezas.length === 1 ? `${cod} — ${rarezas[0]}` : `${cod} — ${rarezas.length} rarezas`;
+      item.addEventListener('click', () => {
+        codigoInput.value = cod;
+        aplicarRarezaSegunCodigo(cod);
+        cerrarSugerenciasCodigo();
+      });
+      sugerenciasCodigoBox.appendChild(item);
+    });
+    sugerenciasCodigoBox.classList.add('open');
+  });
+
+  codigoInput.addEventListener('focus', () => {
+    if(codigosPorCarta && codigoInput.value.trim() === ''){
+      codigoInput.dispatchEvent(new Event('input'));
+    }
   });
 
   // Conexión a Supabase — separada del resto para que un fallo de red no
@@ -390,6 +518,8 @@
       rareza: rarezaSel.value,
       idioma: document.getElementById('idioma').value,
       estado_carta: document.getElementById('estadoCarta').value,
+      acabado: grupoAcabado.style.display === 'none' ? null : document.getElementById('acabado').value,
+      edicion: grupoEdicion.style.display === 'none' ? null : document.getElementById('edicion').value,
       cantidad,
       estado_pedido: 'Cotizado'
     };
