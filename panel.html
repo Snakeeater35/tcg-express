@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCG Express — Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12141c; --paper:#f3ede0; --gold:#c9a227; --gold-soft:#e4c766;
+    --text:#eae7de; --text-dim:#9a9db1; --panel:#1b1e2b; --line:#2c2f42;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: radial-gradient(ellipse at top, #1a1e2c 0%, var(--ink) 60%);
+    color:var(--text); font-family:'IBM Plex Sans',sans-serif;
+    min-height:100vh; padding:36px 16px 60px; line-height:1.5;
+  }
+  .wrap{ max-width:780px; margin:0 auto; }
+  .kicker{ font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--gold-soft); margin:0 0 10px; }
+  h1{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(26px,5.5vw,34px); margin:0 0 22px; color:var(--paper); }
+
+  /* Login */
+  .login-card{
+    background:var(--paper); color:#1c1a14; border-radius:16px; padding:28px 24px;
+    max-width:380px; margin:60px auto;
+  }
+  .login-card h2{ font-family:'Fraunces',serif; font-size:22px; margin:0 0 18px; }
+  .fg{ margin-bottom:14px; }
+  label{ display:block; font-size:12.5px; font-weight:600; color:#514a34; margin-bottom:5px; }
+  input, select{
+    width:100%; font-family:'IBM Plex Sans',sans-serif; font-size:14.5px;
+    padding:10px 11px; border-radius:7px; border:1.5px solid #cfc5a4;
+    background:#fffdf7; color:#1c1a14; outline:none;
+  }
+  input:focus, select:focus{ border-color:var(--gold); }
+  .btn-primary{
+    width:100%; background:#1e5c4a; color:#f3ede0; border:none; border-radius:8px;
+    padding:12px; font-weight:600; cursor:pointer; font-size:15px; margin-top:6px;
+  }
+  .login-error{ color:#c9584a; font-size:13px; margin-top:10px; min-height:16px; }
+
+  /* Panel */
+  #panel{ display:none; }
+  .toolbar{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
+  .tab{
+    background:var(--panel); border:1px solid var(--line); color:var(--text-dim);
+    font-size:13px; padding:7px 12px; border-radius:999px; cursor:pointer; white-space:nowrap;
+  }
+  .tab.active{ background:var(--gold); color:#1c1a14; border-color:var(--gold); font-weight:600; }
+  .spacer{ flex:1; }
+  .btn-logout{
+    background:transparent; border:1px solid var(--line); color:var(--text-dim);
+    border-radius:8px; padding:7px 12px; font-size:13px; cursor:pointer;
+  }
+  .empty{ color:var(--text-dim); font-size:14px; padding:30px 6px; text-align:center; }
+
+  .order{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:14px 16px; margin-bottom:10px;
+  }
+  .order-top{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+  .order-title{ font-weight:600; font-size:15px; color:var(--paper); }
+  .order-sub{ font-size:12.5px; color:var(--text-dim); margin-top:2px; }
+  .order-meta{ font-size:12.5px; color:var(--text-dim); margin-top:8px; }
+  .order-bottom{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  select.status{
+    background:#0e1017; color:var(--paper); border:1px solid var(--line); border-radius:7px;
+    padding:7px 9px; font-size:13px;
+  }
+  .badge{ font-size:11px; padding:2px 8px; border-radius:999px; font-weight:600; }
+  .badge-Cotizado{ background:#3a3320; color:var(--gold-soft); }
+  .badge-Pagado50{ background:#233a52; color:#7fb2e6; }
+  .badge-Comprado{ background:#2a3a24; color:#9bd17e; }
+  .badge-EnCamino{ background:#3a2c1a; color:#e0a35f; }
+  .badge-Entregado{ background:#1e3a2c; color:#5fdba0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">TCG Express</p>
+  <h1>Panel de pedidos</h1>
+
+  <div class="login-card" id="loginCard">
+    <h2>Iniciar sesión</h2>
+    <div class="fg"><label for="loginEmail">Correo</label><input id="loginEmail" type="email"></div>
+    <div class="fg"><label for="loginPass">Contraseña</label><input id="loginPass" type="password"></div>
+    <button class="btn-primary" id="btnLogin">Entrar</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+
+  <div id="panel">
+    <div class="toolbar" id="tabs"></div>
+    <div class="toolbar">
+      <span></span><div class="spacer"></div>
+      <button class="btn-logout" id="btnLogout">Cerrar sesión</button>
+    </div>
+    <div id="lista"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = 'https://eivfoxxrnfcvdjkebqjh.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_pPju-InTZp4zyv95SeHNNg_jo4t0ahB';
+
+  const ESTADOS = ['Cotizado', 'Pagado50', 'Comprado', 'EnCamino', 'Entregado'];
+  const ESTADO_LABEL = { Cotizado:'Cotizado', Pagado50:'Pagado 50%', Comprado:'Comprado', EnCamino:'En camino', Entregado:'Entregado' };
+
+  let sb = null;
+  let pedidos = [];
+  let filtro = 'Todos';
+
+  const loginCard = document.getElementById('loginCard');
+  const panel = document.getElementById('panel');
+  const loginError = document.getElementById('loginError');
+  const listaEl = document.getElementById('lista');
+  const tabsEl = document.getElementById('tabs');
+
+  function fmt(n){ return n ? '€ ' + Number(n).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'; }
+
+  function renderTabs(){
+    const counts = { Todos: pedidos.length };
+    ESTADOS.forEach(e => counts[e] = pedidos.filter(p => p.estado_pedido === e).length);
+    const tabs = ['Todos', ...ESTADOS];
+    tabsEl.innerHTML = tabs.map(t => {
+      const label = t === 'Todos' ? 'Todos' : ESTADO_LABEL[t];
+      return `<button class="tab ${filtro===t?'active':''}" data-tab="${t}">${label} (${counts[t]||0})</button>`;
+    }).join('');
+    tabsEl.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => { filtro = btn.dataset.tab; renderTabs(); renderLista(); });
+    });
+  }
+
+  function renderLista(){
+    const items = filtro === 'Todos' ? pedidos : pedidos.filter(p => p.estado_pedido === filtro);
+    if(items.length === 0){
+      listaEl.innerHTML = '<div class="empty">No hay pedidos en esta vista.</div>';
+      return;
+    }
+    listaEl.innerHTML = items.map(p => `
+      <div class="order" data-id="${p.id}">
+        <div class="order-top">
+          <div>
+            <div class="order-title">${p.tcg || ''} — ${p.carta || '(sin nombre)'}</div>
+            <div class="order-sub">${p.cliente || 'Sin cliente'} ${p.telefono ? '· ' + p.telefono : ''}</div>
+          </div>
+        </div>
+        <div class="order-meta">
+          ${p.codigo ? p.codigo + ' · ' : ''}${p.rareza ? p.rareza + ' · ' : ''}${p.idioma ? p.idioma + ' · ' : ''}${p.estado_carta ? p.estado_carta + ' · ' : ''}Cant. ${p.cantidad || 1}
+          ${p.acabado ? '<br>Acabado: ' + p.acabado : ''}${p.edicion && p.edicion !== 'No aplica' ? ' · ' + p.edicion : ''}
+          ${p.total ? '<br>Total: ' + fmt(p.total) : ''}
+        </div>
+        <div class="order-bottom">
+          <span class="badge badge-${p.estado_pedido}">${ESTADO_LABEL[p.estado_pedido] || p.estado_pedido}</span>
+          <select class="status" data-id="${p.id}">
+            ${ESTADOS.map(e => `<option value="${e}" ${e===p.estado_pedido?'selected':''}>${ESTADO_LABEL[e]}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    `).join('');
+
+    listaEl.querySelectorAll('select.status').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        await sb.from('pedidos').update({ estado_pedido: sel.value }).eq('id', sel.dataset.id);
+      });
+    });
+  }
+
+  async function cargarPedidos(){
+    const { data, error } = await sb.from('pedidos').select('*').order('created_at', { ascending: false }).limit(500);
+    if(error){
+      listaEl.innerHTML = '<div class="empty">Error cargando pedidos: ' + error.message + '</div>';
+      return;
+    }
+    pedidos = data || [];
+    renderTabs();
+    renderLista();
+  }
+
+  function mostrarPanel(){
+    loginCard.style.display = 'none';
+    panel.style.display = 'block';
+    cargarPedidos();
+    sb.channel('pedidos-cambios')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, cargarPedidos)
+      .subscribe();
+  }
+
+  async function init(){
+    try{
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    }catch(e){
+      loginError.textContent = 'No se pudo conectar. Recarga la página.';
+      return;
+    }
+
+    const { data: { session } } = await sb.auth.getSession();
+    if(session){ mostrarPanel(); }
+
+    document.getElementById('btnLogin').addEventListener('click', async () => {
+      loginError.textContent = '';
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPass').value;
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if(error){
+        loginError.textContent = 'Correo o contraseña incorrectos.';
+        return;
+      }
+      mostrarPanel();
+    });
+
+    document.getElementById('btnLogout').addEventListener('click', async () => {
+      await sb.auth.signOut();
+      panel.style.display = 'none';
+      loginCard.style.display = 'block';
+    });
+  }
+
+  init();
+</script>
+</body>
+</html>
