@@ -92,6 +92,14 @@
     <div class="login-error" id="loginError"></div>
   </div>
 
+  <div class="login-card" id="resetCard" style="display:none;">
+    <h2>Elige tu nueva contraseña</h2>
+    <div class="fg"><label for="resetPass">Nueva contraseña</label><input id="resetPass" type="password"></div>
+    <div class="fg"><label for="resetPass2">Repite la contraseña</label><input id="resetPass2" type="password"></div>
+    <button class="btn-primary" id="btnReset">Guardar contraseña</button>
+    <div class="login-error" id="resetError"></div>
+  </div>
+
   <div id="panel">
     <div class="toolbar" id="tabs"></div>
     <div class="toolbar">
@@ -197,6 +205,38 @@
       loginError.textContent = 'No se pudo conectar. Recarga la página.';
       return;
     }
+
+    const resetCard = document.getElementById('resetCard');
+    const resetError = document.getElementById('resetError');
+
+    sb.auth.onAuthStateChange((event, session) => {
+      if(event === 'PASSWORD_RECOVERY'){
+        loginCard.style.display = 'none';
+        panel.style.display = 'none';
+        resetCard.style.display = 'block';
+      }
+    });
+
+    document.getElementById('btnReset').addEventListener('click', async () => {
+      resetError.textContent = '';
+      const p1 = document.getElementById('resetPass').value;
+      const p2 = document.getElementById('resetPass2').value;
+      if(p1.length < 6){
+        resetError.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+        return;
+      }
+      if(p1 !== p2){
+        resetError.textContent = 'Las contraseñas no coinciden.';
+        return;
+      }
+      const { error } = await sb.auth.updateUser({ password: p1 });
+      if(error){
+        resetError.textContent = 'No se pudo guardar: ' + error.message;
+        return;
+      }
+      resetCard.style.display = 'none';
+      mostrarPanel();
+    });
 
     const { data: { session } } = await sb.auth.getSession();
     if(session){ mostrarPanel(); }
