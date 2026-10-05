@@ -77,6 +77,24 @@
   .badge-Comprado{ background:#2a3a24; color:#9bd17e; }
   .badge-EnCamino{ background:#3a2c1a; color:#e0a35f; }
   .badge-Entregado{ background:#1e3a2c; color:#5fdba0; }
+  .btn-cotizar{
+    background:transparent; border:1px solid var(--gold); color:var(--gold-soft);
+    border-radius:7px; padding:6px 10px; font-size:12.5px; cursor:pointer;
+  }
+  .quote-box{
+    margin-top:12px; padding-top:12px; border-top:1px dashed var(--line);
+  }
+  .quote-box .qrow{ display:flex; gap:10px; }
+  .quote-box .fg{ flex:1; margin-bottom:10px; min-width:0; }
+  .quote-box label{ display:block; font-size:11.5px; color:var(--text-dim); margin-bottom:4px; }
+  .quote-box input, .quote-box select{
+    width:100%; font-size:13.5px; padding:8px 9px; border-radius:7px;
+    border:1px solid var(--line); background:#0e1017; color:var(--paper);
+  }
+  .btn-guardar-cotizacion{
+    width:100%; background:#1e5c4a; color:#f3ede0; border:none; border-radius:8px;
+    padding:10px; font-weight:600; cursor:pointer; font-size:13.5px;
+  }
 </style>
 </head>
 <body>
@@ -167,6 +185,27 @@
           <select class="status" data-id="${p.id}">
             ${ESTADOS.map(e => `<option value="${e}" ${e===p.estado_pedido?'selected':''}>${ESTADO_LABEL[e]}</option>`).join('')}
           </select>
+          <button class="btn-cotizar" data-id="${p.id}">${p.total ? 'Editar cotización' : 'Cotizar'}</button>
+        </div>
+        <div class="quote-box" id="quote-${p.id}" style="display:none;">
+          <div class="qrow">
+            <div class="fg">
+              <label>Precio Cardmarket unidad (€)</label>
+              <input type="number" min="0" step="0.01" class="q-precio" data-id="${p.id}" value="${p.precio_cardmarket || ''}">
+            </div>
+            <div class="fg">
+              <label>Total (con 35%)</label>
+              <input type="number" class="q-total" data-id="${p.id}" value="${p.total || ''}" readonly>
+            </div>
+          </div>
+          <div class="fg">
+            <label>Método de pago</label>
+            <select class="q-metodo" data-id="${p.id}">
+              <option value="Yape" ${p.metodo_pago==='Yape'?'selected':''}>Yape</option>
+              <option value="Link tarjeta" ${p.metodo_pago==='Link tarjeta'?'selected':''}>Link tarjeta (CulqiLink)</option>
+            </select>
+          </div>
+          <button class="btn-guardar-cotizacion" data-id="${p.id}">Guardar cotización</button>
         </div>
       </div>
     `).join('');
@@ -174,6 +213,43 @@
     listaEl.querySelectorAll('select.status').forEach(sel => {
       sel.addEventListener('change', async () => {
         await sb.from('pedidos').update({ estado_pedido: sel.value }).eq('id', sel.dataset.id);
+      });
+    });
+
+    listaEl.querySelectorAll('.btn-cotizar').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const box = document.getElementById('quote-' + btn.dataset.id);
+        box.style.display = box.style.display === 'none' ? 'block' : 'none';
+      });
+    });
+
+    listaEl.querySelectorAll('.q-precio').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const id = inp.dataset.id;
+        const pedido = pedidos.find(p => String(p.id) === String(id));
+        const cantidad = (pedido && pedido.cantidad) || 1;
+        const precio = parseFloat(inp.value) || 0;
+        const total = precio * cantidad * 1.35;
+        const totalInput = listaEl.querySelector(`.q-total[data-id="${id}"]`);
+        totalInput.value = total.toFixed(2);
+      });
+    });
+
+    listaEl.querySelectorAll('.btn-guardar-cotizacion').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const precio = parseFloat(listaEl.querySelector(`.q-precio[data-id="${id}"]`).value) || 0;
+        const total = parseFloat(listaEl.querySelector(`.q-total[data-id="${id}"]`).value) || 0;
+        const metodo = listaEl.querySelector(`.q-metodo[data-id="${id}"]`).value;
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+        await sb.from('pedidos').update({
+          precio_cardmarket: precio,
+          total: total,
+          metodo_pago: metodo
+        }).eq('id', id);
+        btn.disabled = false;
+        btn.textContent = 'Guardar cotización';
       });
     });
   }
