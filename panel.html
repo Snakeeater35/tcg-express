@@ -91,8 +91,21 @@
     width:100%; font-size:13.5px; padding:8px 9px; border-radius:7px;
     border:1px solid var(--line); background:#0e1017; color:var(--paper);
   }
+  .q-desglose{ margin-bottom:12px; }
+  .q-linea{
+    display:flex; justify-content:space-between; font-size:13px; color:var(--text-dim);
+    padding:3px 0;
+  }
+  .q-linea.q-total-linea{
+    font-weight:600; color:var(--paper); border-top:1px solid var(--line);
+    margin-top:4px; padding-top:7px;
+  }
   .btn-guardar-cotizacion{
     width:100%; background:#1e5c4a; color:#f3ede0; border:none; border-radius:8px;
+    padding:10px; font-weight:600; cursor:pointer; font-size:13.5px; margin-bottom:8px;
+  }
+  .btn-whatsapp-cot{
+    width:100%; background:#226b56; color:#f3ede0; border:1px solid #3a8a6f; border-radius:8px;
     padding:10px; font-weight:600; cursor:pointer; font-size:13.5px;
   }
 </style>
@@ -139,6 +152,26 @@
   let sb = null;
   let pedidos = [];
   let filtro = 'Todos';
+  let tipoCambio = null; // EUR -> PEN
+
+  async function cargarTipoCambio(){
+    try{
+      const res = await fetch('https://open.er-api.com/v6/latest/EUR');
+      const json = await res.json();
+      if(json && json.rates && json.rates.PEN){
+        tipoCambio = json.rates.PEN;
+      }
+    }catch(e){
+      console.error('No se pudo obtener el tipo de cambio:', e);
+    }
+    actualizarTextoTC();
+  }
+
+  function actualizarTextoTC(){
+    document.querySelectorAll('.q-tc').forEach(el => {
+      el.textContent = tipoCambio ? ('1€ = S/ ' + tipoCambio.toFixed(3)) : 'cargando...';
+    });
+  }
 
   const loginCard = document.getElementById('loginCard');
   const panel = document.getElementById('panel');
@@ -178,7 +211,8 @@
         <div class="order-meta">
           ${p.codigo ? p.codigo + ' · ' : ''}${p.rareza ? p.rareza + ' · ' : ''}${p.idioma ? p.idioma + ' · ' : ''}${p.estado_carta ? p.estado_carta + ' · ' : ''}Cant. ${p.cantidad || 1}
           ${p.acabado ? '<br>Acabado: ' + p.acabado : ''}${p.edicion && p.edicion !== 'No aplica' ? ' · ' + p.edicion : ''}
-          ${p.total ? '<br>Total: ' + fmt(p.total) : ''}
+          ${p.precio_cardmarket ? '<br>Precio unidad: ' + fmt(p.precio_cardmarket) : ''}
+          ${p.total ? ' · Total: ' + fmt(p.total) : ''}${p.total_pen ? ' (S/ ' + Number(p.total_pen).toFixed(2) + ')' : ''}
         </div>
         <div class="order-bottom">
           <span class="badge badge-${p.estado_pedido}">${ESTADO_LABEL[p.estado_pedido] || p.estado_pedido}</span>
@@ -188,15 +222,21 @@
           <button class="btn-cotizar" data-id="${p.id}">${p.total ? 'Editar cotización' : 'Cotizar'}</button>
         </div>
         <div class="quote-box" id="quote-${p.id}" style="display:none;">
-          <div class="qrow">
-            <div class="fg">
-              <label>Precio Cardmarket unidad (€)</label>
-              <input type="number" min="0" step="0.01" class="q-precio" data-id="${p.id}" value="${p.precio_cardmarket || ''}">
-            </div>
-            <div class="fg">
-              <label>Total (con 35%)</label>
-              <input type="number" class="q-total" data-id="${p.id}" value="${p.total || ''}" readonly>
-            </div>
+          <div class="fg">
+            <label>Precio Cardmarket por unidad (€)</label>
+            <input type="number" min="0" step="0.01" class="q-precio" data-id="${p.id}" value="${p.precio_cardmarket || ''}">
+          </div>
+          <div class="q-desglose" id="desglose-${p.id}">
+            <div class="q-linea"><span>Precio unidad</span><span class="q-unit">€ 0.00</span></div>
+            <div class="q-linea"><span>× cantidad (${p.cantidad || 1})</span><span class="q-subtotal">€ 0.00</span></div>
+          </div>
+          <div class="fg">
+            <label>Precio de venta final (€) — <span class="q-margen-pct">margen 35%</span></label>
+            <input type="number" min="0" step="0.01" class="q-total-eur-input" data-id="${p.id}" value="${p.total || ''}">
+          </div>
+          <div class="fg">
+            <label>Total a cobrar — tipo de cambio: <span class="q-tc">...</span> (ajustable si quieres redondear)</label>
+            <input type="number" min="0" step="0.5" class="q-total-pen" data-id="${p.id}" value="${p.total_pen || ''}">
           </div>
           <div class="fg">
             <label>Método de pago</label>
@@ -206,6 +246,7 @@
             </select>
           </div>
           <button class="btn-guardar-cotizacion" data-id="${p.id}">Guardar cotización</button>
+          <button class="btn-whatsapp-cot" data-id="${p.id}">Enviar cotización por WhatsApp</button>
         </div>
       </div>
     `).join('');
@@ -223,35 +264,129 @@
       });
     });
 
+    function subtotalDe(id){
+      const pedido = pedidos.find(p => String(p.id) === String(id));
+      const cantidad = (pedido && pedido.cantidad) || 1;
+      const precio = parseFloat(listaEl.querySelector(`.q-precio[data-id="${id}"]`).value) || 0;
+      return precio * cantidad;
+    }
+
+    // Precio Cardmarket -> aplica 35% por defecto y llena el total de venta
+    function recalcularDesdePrecio(id){
+      const pedido = pedidos.find(p => String(p.id) === String(id));
+      const cantidad = (pedido && pedido.cantidad) || 1;
+      const precio = parseFloat(listaEl.querySelector(`.q-precio[data-id="${id}"]`).value) || 0;
+      const subtotal = precio * cantidad;
+      const totalEur = subtotal * 1.35;
+
+      document.getElementById('desglose-' + id).querySelector('.q-unit').textContent = fmt(precio);
+      document.getElementById('desglose-' + id).querySelector('.q-subtotal').textContent = fmt(subtotal);
+
+      const totalInput = listaEl.querySelector(`.q-total-eur-input[data-id="${id}"]`);
+      totalInput.value = totalEur.toFixed(2);
+      actualizarMargenYTotalPen(id);
+    }
+
+    // Total de venta final -> recalcula qué % de margen representa
+    function actualizarMargenYTotalPen(id){
+      const subtotal = subtotalDe(id);
+      const totalInput = listaEl.querySelector(`.q-total-eur-input[data-id="${id}"]`);
+      const totalEur = parseFloat(totalInput.value) || 0;
+      const pct = subtotal > 0 ? ((totalEur / subtotal) - 1) * 100 : 0;
+
+      const card = document.querySelector(`.order[data-id="${id}"]`);
+      card.querySelector('.q-margen-pct').textContent = `margen ${pct.toFixed(1)}%`;
+
+      const totalPenInput = listaEl.querySelector(`.q-total-pen[data-id="${id}"]`);
+      if(tipoCambio){
+        totalPenInput.value = (totalEur * tipoCambio).toFixed(2);
+      }
+      return totalEur;
+    }
+
+    function recalcularDesglose(id){
+      // Usado al enviar por WhatsApp: toma el total de venta actual, el que esté.
+      return actualizarMargenYTotalPen(id);
+    }
+
     listaEl.querySelectorAll('.q-precio').forEach(inp => {
-      inp.addEventListener('input', () => {
-        const id = inp.dataset.id;
-        const pedido = pedidos.find(p => String(p.id) === String(id));
-        const cantidad = (pedido && pedido.cantidad) || 1;
-        const precio = parseFloat(inp.value) || 0;
-        const total = precio * cantidad * 1.35;
-        const totalInput = listaEl.querySelector(`.q-total[data-id="${id}"]`);
-        totalInput.value = total.toFixed(2);
-      });
+      inp.addEventListener('input', () => recalcularDesdePrecio(inp.dataset.id));
+      if(inp.value) recalcularDesdePrecio(inp.dataset.id);
+    });
+
+    listaEl.querySelectorAll('.q-total-eur-input').forEach(inp => {
+      inp.addEventListener('input', () => actualizarMargenYTotalPen(inp.dataset.id));
+      if(inp.value) actualizarMargenYTotalPen(inp.dataset.id);
     });
 
     listaEl.querySelectorAll('.btn-guardar-cotizacion').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
         const precio = parseFloat(listaEl.querySelector(`.q-precio[data-id="${id}"]`).value) || 0;
-        const total = parseFloat(listaEl.querySelector(`.q-total[data-id="${id}"]`).value) || 0;
+        const total = parseFloat(listaEl.querySelector(`.q-total-eur-input[data-id="${id}"]`).value) || 0;
+        const totalPen = parseFloat(listaEl.querySelector(`.q-total-pen[data-id="${id}"]`).value) || 0;
         const metodo = listaEl.querySelector(`.q-metodo[data-id="${id}"]`).value;
         btn.disabled = true;
         btn.textContent = 'Guardando...';
         await sb.from('pedidos').update({
           precio_cardmarket: precio,
           total: total,
+          total_pen: totalPen,
           metodo_pago: metodo
         }).eq('id', id);
         btn.disabled = false;
         btn.textContent = 'Guardar cotización';
       });
     });
+
+    function telefonoWhatsapp(numero){
+      let limpio = (numero || '').replace(/[^0-9]/g, '');
+      if(!limpio.startsWith('51')) limpio = '51' + limpio;
+      return limpio;
+    }
+
+    listaEl.querySelectorAll('.btn-whatsapp-cot').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const pedido = pedidos.find(p => String(p.id) === String(id));
+        if(!pedido || !pedido.telefono){
+          alert('Este pedido no tiene teléfono registrado.');
+          return;
+        }
+        const totalEur = recalcularDesglose(id);
+        const totalPenInput = listaEl.querySelector(`.q-total-pen[data-id="${id}"]`);
+        const totalPen = parseFloat(totalPenInput.value) || 0;
+        const metodo = listaEl.querySelector(`.q-metodo[data-id="${id}"]`).value;
+
+        const pagoTexto = metodo === 'Yape'
+          ? 'Puedes pagar por Yape al 997 205 413.'
+          : 'Te paso un link de pago por tarjeta (CulqiLink) para que completes el pago.';
+
+        const lineas = [
+          `¡Hola ${pedido.cliente || ''}! Aquí tu cotización:`,
+          '',
+          `${pedido.tcg} — ${pedido.carta}`,
+          pedido.codigo ? `Código: ${pedido.codigo}` : null,
+          pedido.rareza ? `Rareza: ${pedido.rareza}` : null,
+          pedido.idioma ? `Idioma: ${pedido.idioma}` : null,
+          pedido.estado_carta ? `Estado: ${pedido.estado_carta}` : null,
+          pedido.acabado ? `Acabado: ${pedido.acabado}` : null,
+          (pedido.edicion && pedido.edicion !== 'No aplica') ? `Edición: ${pedido.edicion}` : null,
+          `Cantidad: ${pedido.cantidad || 1}`,
+          '',
+          `Total: S/ ${totalPen.toFixed(2)} (€ ${totalEur.toFixed(2)}, incluye envío)`,
+          '',
+          pagoTexto,
+          'Recuerda: el pago es 50% para confirmar el pedido y 50% contra entrega. El tiempo de llegada estimado es de 3 a 4 semanas.'
+        ].filter(Boolean);
+
+        const texto = encodeURIComponent(lineas.join('\n'));
+        const url = `https://wa.me/${telefonoWhatsapp(pedido.telefono)}?text=${texto}`;
+        window.open(url, '_blank', 'noopener');
+      });
+    });
+
+    actualizarTextoTC();
   }
 
   async function cargarPedidos(){
@@ -269,6 +404,7 @@
     loginCard.style.display = 'none';
     panel.style.display = 'block';
     cargarPedidos();
+    cargarTipoCambio();
     sb.channel('pedidos-cambios')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, cargarPedidos)
       .subscribe();
